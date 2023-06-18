@@ -1,0 +1,242 @@
+---
+title: "Final Project"
+author: "Sid Pothuganti, Sohini Roy, Annmay Sharma"
+date: "2023-04-27"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+# **Project Question**
+*********************************************************************************
+The data set we have chosen shows us an overview of the different prices of Airbnbs in European cities. There are 20 different provided variables, such as the type of room (room_type), capacity (person_capacity), whether or not the host is a superhost (host_is_superhost), and more. Based on this data, we would like to conduct a thorough analysis of which of the 19 other predictors contributes the most significantly to the guest’s overall satisfaction rating at the end of their stay (guest_satisfaction_overall). This could be useful to find what factors truly affect guest satisfaction and what might be unnecessary. This will be a regression analysis to determine what is the best model using the statistically significant predictors to predict the guest’s overall satisfaction rating.
+
+# **Literature Review**
+*********************************************************************************
+
+The NIH (specifically the National Center for Biotechnology Information) did a study exploring the sources of satisfaction and dissatisfaction in Airbnb accommodation by analyzing online reviews on the app. The results tell Airbnb hosts which aspects of the listing to focus on improving and which ones are not as important, and how to avoid dissatisfaction of guests as well as create satisfaction. Some of the results include maintaining boundaries between “private” and “shared” room rentals to avoid guest conflicts, providing training to hosts to know the proper way of communicating with users, as well as maintaining the cleanliness and hygiene basics expected by every guest. The methodologies used in this study include an emphasis on more computational linguistic-based approaches, for instance sentiment analysis and topic modeling. Within the sDLA analysis statistical summary, we are able to see the p-values in accordance with the topics so we can see which variables are significant, like we did with ours. (source: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8096999/)
+
+Another study was done by Corvinus University in Hungary that analyzed Airbnb customer reviews in a similar fashion, to explore the factors that contributed to user ratings the most heavily. The dataset was inclusive of customer ratings, reviews, and information about the rooms. Two of the main methods of analysis used here were TF-IDF (term frequency- inverse document frequency) and lasso-based feature selection. With the lasso-based feature selection, a listing is determined to be “positive” or “negative” depending on whether the rating is above the upper docile or below the bottom docile, respectively. In order to carry this out, random samples are generated from the reviews, are divided into training/testing sets, and then the comment is categorized. The results of this study showed that there was a positive bias towards the hosts in the comments, and that the two most important factors in customer satisfaction were “location” and “cleanliness”. With customer dissatisfaction however, it seemed that “location”, “amenities”, and “price” were key determinants. (source: https://marcellgranat.github.io/airbnb-research/index.html).
+
+# **Data**
+*********************************************************************************
+In order to analyze our topic, we used a dataset on Kaggle that provided a variety of information on AirBnB listings in different cities in Europe. We chose to analyze the London weekends dataset, simply because it was the largest dataset, and had the most data available to build better models.
+
+
+# **Empirical Application**
+*********************************************************************************
+
+In order to analyze our data, we used multiple approaches to find the most accurate model; linear regression, stepwise selection, and decision trees.
+
+Loading in packages
+```{r}
+library(MASS)
+library(caret)
+library(ISLR2)
+library(tree)
+library(dplyr)
+library(randomForest)
+library(tibble)
+```
+
+Loading in our training data to variable "london_data":
+``` {r}
+london_data <- read.csv("london_weekends.csv") #reading in csv
+london_data <- london_data[, c(-1)] #dropping first index column
+```
+
+Let us take a look at a quick summary of the remaining variables in our data.
+
+``` {r}
+summary(london_data)
+```
+
+``` {r}
+# Linear regression line.
+lm.fit <- lm(guest_satisfaction_overall~ ., data=london_data)
+summary(lm.fit)
+```
+
+The most significant variables we have here seem to be biz and cleanliness rating. biz is a categorical variable that represents whether or not someone is staying at an Airbnb on business/professional reasons- this is a bit difficult to represent the effects of accurately in a plot, but we can plot cleanliness rating:
+
+``` {r}
+plot(guest_satisfaction_overall ~ cleanliness_rating, data=london_data, main= 'Scatter plot of cleanliness rating against guest satisfaction', col='red')
+```
+
+As we can see, there is definitely an apparent upwards correlation here i.e. a higher cleanliness rating contributes to a higher guest satisfaction overall.
+
+Taking a quick look at the p-values of the variables, the immediate insignificant ones include realSum, person_capacity, dist, attr_index, rest_index and lng, if we are considering the standard significance level of 0.05.
+
+We go ahead and also remove the variables that contain a singularity (p-value of NA), to avoid confusion in our new model. This gives us:
+
+``` {r}
+lm.fit2 <- lm(guest_satisfaction_overall~ . -realSum - person_capacity - dist - attr_index - rest_index - lng - room_shared - room_private - attr_index_norm - rest_index_norm, data=london_data)
+summary(lm.fit2)
+```
+
+By looking at the R^2 statistics and the RSE, we find those two models are quite similar as they have R^2 = 0.5908 and R^2 = 0.5904. At the same time, the RSEs for two model are 7.232 and 7.231 respectively. We do notice a bit of a decrease with R^2 from the first model to the second, but it is a negligible difference and in both cases, around 59% of the model can explain the dependent variable. We  also notice a higher F-statistic in the second model, suggesting a more significant model due to greater differences between population averages. Concluding, these statistics show that the two models are doing decent job in predicting overall guest satisfaction.
+
+```{r data_prep}
+
+df <- read.csv("london_weekends.csv")
+df$host_is_superhost <- as.integer(as.logical(df$host_is_superhost))
+df$room_shared <- as.integer(as.logical(df$room_shared))
+df$room_private <- as.integer(as.logical(df$room_private))
+head(df)
+```
+For the initial data preparation, we converted the true and false variables into 0 and 1 to ensure we can logisitcally regress on these variables if need be. The remaining dataset is left untouched. 
+
+```{r init_model}
+set.seed(121)
+full_model <- glm(data = df, guest_satisfaction_overall ~ .)
+null_model <- glm(data = df, guest_satisfaction_overall ~ 1)
+summary(full_model)
+
+```
+
+```{r forward}
+set.seed(121)
+summary(stepAIC(null_model, # start with a model containing no variables
+                direction = 'forward', # run forward selection
+                scope = list(upper = full_model, # the maximum to consider is a model with all variables
+                             lower = null_model), # the minimum to consider is a model with no variables
+                trace = 0))
+```
+
+Upon running forward selection, we can see that most variables are statistically significant at a 0.01 level except for metro_dist and realSum. The AIC is reasonably high at 36559 but still lower than the final model chosen from backward selection (which we will see later). It took 2 iterations to fit the optimal model. But the final model that we get is - 
+
+guest_satisfaction_overall = - 0.04925 + 6.916\*cleanliness_rating - 3.818\*biz + 1.347 \* room_private + 1.333 \* host_is_superhost - 1.015 \* multi + 0.5399 \* bedrooms + 10.09\* lat + 0.1885 \* metro_dist + 0.0003 \* realSum
+```{r backward}
+set.seed(121)
+summary(stepAIC(full_model, # start with a model containing no variables
+                direction = 'backward', # run forward selection
+                scope = list(upper = full_model, # the maximum to consider is a model with all variables
+                             lower = null_model), # the minimum to consider is a model with no variables
+                trace = 0))
+```
+Upon running backward selection, we can see that most variables are statistically significant at a 0.01 level except for metro_dist, realSum and room_typeShared room. The AIC is reasonably high at 36561 which is higher than the final model chosen from forward selection. It took 2 iterations to fit the optimal model. But the final model that we get is - 
+
+guest_satisfaction_overall = -493 + 0.0003957 \* realSum + 1.352 \* room_type(Private Room) + 0.3146 \* room_type(Shared Room)  + 1.33 \* host_is_superhost - 1.015 \* multi - 3.817 \*biz + 6.916 \* cleanliness_rating + 0.5408 \* bedrooms + 0.1879 \* metro_dist + 1.01 \* lat
+
+
+```{r train_model_loocv}
+set.seed(121)
+# Define training control
+df$host_is_superhost <- as.factor(df$guest_satisfaction_overall)
+train.control <- trainControl(method = "LOOCV")
+# Train the model
+model_loocv <- train( guest_satisfaction_overall ~ cleanliness_rating + 
+    biz + room_private + host_is_superhost + multi + bedrooms + 
+    lat + metro_dist + realSum, data = df, method = "glm",
+               trControl = train.control)
+# Summarize the results
+print(model_loocv)
+```
+
+Upon doing LOOCV (Leave one-out cross validation), we can see that we get a very high r-squared value of 0.9958233. However, the final fit is not ideal as we have a higher RMSE of 0.735 (optimally this value should be lower). However a reall low MAE value of 0.014 shows us that we have an accurate model.
+
+```{r train_model_kfold}
+set.seed(121)
+# Define training control
+
+rsq_vals <- 0
+for (i in 2:10) {
+  train.control <- trainControl(method = "cv", number = i)
+  # Train the model
+  model_kfold <- train(guest_satisfaction_overall ~ cleanliness_rating + 
+    biz + room_private + host_is_superhost + multi + bedrooms + 
+    lat + metro_dist + realSum, data = df, method = "glm",
+               trControl = train.control)
+  print(model_kfold)
+  rsq_vals[i] <- model_kfold$results$Rsquared
+}
+# Summarize the results
+print(rsq_vals)
+plot(rsq_vals)
+abline(h=max(rsq_vals), col="blue")
+```
+
+We conducted a k-fold cross validation using k values between 2 and 10. upon comparing the r-squared values of the models at different k, we can see that the one with the highest r-squared value was when k=7 with a value of 0.9963390. 
+
+```{r load}
+set.seed(121)
+data = read.csv("london_weekends.csv")
+
+train = sample(1:nrow(data), nrow(data) / 2)
+data.train = data[train, ]
+data.test = data[-train, ]
+```
+
+In order to build a decision tree to find out what variables most affect the guest satisfaction score, we first split our data set into a training and testing set so that we can build a tree and then confirm its accuracy. 
+
+```{r build tree}
+data.tree = tree(guest_satisfaction_overall ~ ., data = data.train)
+summary(data.tree)
+```
+
+```{r text tree}
+data.tree
+```
+
+
+```{r display tree}
+plot(data.tree)
+text(data.tree, pretty = 0)
+```
+
+Upon building the tree using the tree package, we see that the only variables that are necessary are cleanliness_rating(How clean the listing is on a scale of 1-10) and biz(Whether the listing is for business purposes or not). 
+
+```{r test}
+data.pred = predict(data.tree, data.test)
+mean((data.pred - data$guest_satisfaction_overall)^2)
+```
+After using the other half of the data set to test the accuracy of the tree, we see that the test MSE is really high. This is likely due to overfitting or poor variable selection. In order to test if the tree was overfit, we can prune it using cross-validation.
+
+```{r}
+suppressWarnings({
+cv.data = cv.tree(data.tree, FUN = prune.tree)
+plot(cv.data$size, cv.data$dev, type = "b", xlab = "Tree Size", ylab = "Deviance")
+})
+```
+With this plot, the best size for the cv tree would be 5.  
+```{r}
+data.prune = prune.tree(data.tree, best = 5)
+prune.pred = predict(data.prune, data.test)
+mean((prune.pred - data$guest_satisfaction_overall)^2)
+```
+```{r display pruned tree}
+plot(data.prune)
+text(data.prune, pretty = 0)
+```
+Since pruning the tree did not change much from the original tree, as well as the test MSE staying similar, the next step would be to use random forest to create a better predictor.
+
+```{r randomForest}
+data.train = as.data.frame(data.train)
+
+randomforest = randomForest(guest_satisfaction_overall ~ ., data = data.train,
+                            mtry = ncol(data.train) - 1, importance = TRUE)
+
+forest.pred = predict(randomforest, data.test)
+mean((forest.pred - data.test$guest_satisfaction_overall)^2)
+```
+
+```{r}
+importance(randomforest) |>
+  as.data.frame() |>
+  rownames_to_column("varname") |>
+  arrange(desc(IncNodePurity))
+```
+The random forest has a much lower test MSE, and the most important variables changed from cleanliness_rating and biz to cleanliness_rating, realSum, and metro_dist.
+
+# **Interpretation**
+*********************************************************************************
+
+Upon running various methods and formulae, we were able to come to one final equation. As mentioned before, one can see After using a variety of methods to test which model would most accurately find the factors most impactful on what makes a guest satisfied with their experience using an AirBnB, we found that the forward stepwise selection had the best results. The model found exactly what variables had a statistically significant impact on the guest satisfaction score, which was used to create the model:
+
+guest_satisfaction_overall = - 0.04925 + 6.916*cleanliness_rating - 3.818*biz + 1.347 * room_private + 1.333 * host_is_superhost - 1.015 * multi + 0.5399 * bedrooms + 10.09* lat + 0.1885 * metro_dist + 0.0003 * realSum.
+
+After comparing this model to our other methods, we can see that there are similar trends as to which variables are important, but this model also has a lower AIC than the other stepwise models. Overall, we can determine that cleanliness and business purposes have a large impact on the satisfaction score, as well as several other variables. Interestingly, we also see that the price of the listing does not play a large role in the satisfaction score and is not statistically significant in most of the models. While this could mean any number of things, this does at the very least mean that our findings can be applied to listings at any price point.
